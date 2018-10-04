@@ -227,7 +227,7 @@ public class Notification extends JPAEntity implements Serializable {
 
 	// We allow a-zA-Z0-9-_+. in the name, then @ then a-zA-Z0-9- followed by . and a-zA-Z0-9.
 	// ToDo Consider email.contains("@") if we see more issues in future
-	private static final String EMAILREGEX = "[a-zA-Z0-9\\-\\_\\+\\.]+@[a-zA-Z0-9\\-]+\\.[a-zA-Z0-9]+";
+	private static final String EMAILREGEX = "[a-zA-Z0-9\\-\\_\\+\\.]+@[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z0-9]+";
 
     //~ Instance fields ******************************************************************************************************************************
 
@@ -443,14 +443,16 @@ public class Notification extends JPAEntity implements Serializable {
         if(subscriptions == null) return;
         for(String currentSubscription: subscriptions) {
             if (this.getNotifierName().equals(AlertService.SupportedNotifier.GUS.getName())) {
-                if (currentSubscription.length() < 10)
-                    throw new IllegalArgumentException("GUS subjectId is incorrect.");
+                if (currentSubscription.isEmpty() || currentSubscription.length() < 10)
+                    throw new IllegalArgumentException("GUS Subscription has to contain subjectId with more than 10 characters.");
             } else if (this.getNotifierName().equals(AlertService.SupportedNotifier.EMAIL.getName())) {
-                if (!currentSubscription.matches(EMAILREGEX)) {
+                if (currentSubscription.isEmpty() || !currentSubscription.matches(EMAILREGEX)) {
                     String errorMessage = MessageFormat.format("Email Address {0} is not allowed according to Regex {1}.",
                             currentSubscription, EMAILREGEX);
                     throw new IllegalArgumentException(errorMessage);
                 }
+            } else if (this.getNotifierName().equals(AlertService.SupportedNotifier.CALLBACK.getName()) && currentSubscription.isEmpty()) {
+                throw new IllegalArgumentException("Callback Notifier Subscription cannot be empty.");
             }
         }
         if (subscriptions != null && !subscriptions.isEmpty()) {
