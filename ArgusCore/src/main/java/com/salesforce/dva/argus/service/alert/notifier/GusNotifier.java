@@ -158,7 +158,7 @@ public class GusNotifier extends AuditNotifier {
 		Set<String> to = new HashSet<String>(notification.getSubscriptions());
 		String feed = generateGusFeed(notification, trigger, context, status);
 
-		postToGus(to, feed, _config);
+		postToGus(to, feed, _config, false);
     }
 
 	private String generateGusFeed(Notification notification, Trigger trigger, NotificationContext context, NotificationStatus status) {
@@ -202,9 +202,9 @@ public class GusNotifier extends AuditNotifier {
 		return sb.toString();
 	}
 
-	public static void postToGus(Set<String> to, String feed, SystemConfiguration _config) {
+	public static void postToGus(Set<String> to, String feed, SystemConfiguration _config, boolean val) {
 
-		if (Boolean.valueOf(_config.getValue(com.salesforce.dva.argus.system.SystemConfiguration.Property.GUS_ENABLED))) {
+		if (val) {
 			// So far works for only one group, will accept a set of string in future.
 			String groupId = to.toArray(new String[to.size()])[0];
 			PostMethod gusPost = new PostMethod(_config.getValue(Property.POST_ENDPOINT.getName(), Property.POST_ENDPOINT.getDefaultValue()));
@@ -247,7 +247,6 @@ public class GusNotifier extends AuditNotifier {
 					URLEncoder.encode(_config.getValue(Property.GUS_CLIENT_SECRET.getName(), Property.GUS_CLIENT_SECRET.getDefaultValue()), UTF_8));
 			oauthPost.addParameter("username", _config.getValue(Property.ARGUS_GUS_USER.getName(), Property.ARGUS_GUS_USER.getDefaultValue()));
 			oauthPost.addParameter("password", _config.getValue(Property.ARGUS_GUS_PWD.getName(), Property.ARGUS_GUS_PWD.getDefaultValue()));
-
 			int respCode = httpClient.executeMethod(oauthPost);
 
 			_logger.info("Response code '{}'", respCode);
@@ -307,21 +306,21 @@ public class GusNotifier extends AuditNotifier {
 
 	public enum Property {
 		/** The GUS user name. */
-		ARGUS_GUS_USER("notifier.property.alert.gus_user", "test@test.com"),
+		ARGUS_GUS_USER("notifier.property.alert.gus_user", "argus-api@gus.com"),
 		/** The GUS password. */
-		ARGUS_GUS_PWD("notifier.property.alert.gus_pwd", "password"),
+		ARGUS_GUS_PWD("notifier.property.alert.gus_pwd", "il0vesfdc20174!"),
 		/** The GUS endpoint. */
-		GUS_ENDPOINT("notifier.property.alert.gus_endpoint", "https://gus.test.com"),
+		GUS_ENDPOINT("notifier.property.alert.gus_endpoint", "https://gus.my.salesforce.com/services/oauth2/token"),
 		/** The GUS client ID. */
-		GUS_CLIENT_ID("notifier.property.alert.gus_client_id", "test123"),
+		GUS_CLIENT_ID("notifier.property.alert.gus_client_id", "3MVG92.uWdyphVj6UxPnhEXcGWKGUulhD6t5MX22jFwh.vpvswh0ugzWTNdzfKkS9WPOB0N4zuzx5pircZKrH"),
 		/** The GUS client secret. */
-		GUS_CLIENT_SECRET("notifier.property.alert.gus_client_secret", "password"),
+		GUS_CLIENT_SECRET("notifier.property.alert.gus_client_secret", "6187037629736038946"),
 		/** The GUS post endpoint. */
-		POST_ENDPOINT("notifier.property.alert.gus_post_endpoint", "https://gus.test.com"),
+		POST_ENDPOINT("notifier.property.alert.gus_post_endpoint", "https://gus.my.salesforce.com/services/data/v35.0/chatter/feed-elements?feedElementType=FeedItem"),
 		/** The GUS proxy host. */
-		GUS_PROXY_HOST("notifier.property.proxy.host", ""),
+		GUS_PROXY_HOST("notifier.property.proxy.host", "public0-proxy1-0-prd.data.sfdc.net"),
 		/** The GUS port. */
-		GUS_PROXY_PORT("notifier.property.proxy.port", "");
+		GUS_PROXY_PORT("notifier.property.proxy.port", "8080");
 
 		private final String _name;
 		private final String _defaultValue;

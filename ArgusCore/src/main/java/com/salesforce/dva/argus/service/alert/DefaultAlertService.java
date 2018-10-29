@@ -688,16 +688,7 @@ public class DefaultAlertService extends DefaultJPAService implements AlertServi
 	 * Determines if the alert should be evaluated or not.
 	 */
 	private boolean _shouldEvaluateAlert(Alert alert, BigInteger alertId) {
-		if (alert == null) {
-			_logger.warn(MessageFormat.format("Could not find alert ID {0}", alertId));
-			return false;
-		}
-		if(!alert.isEnabled()) {
-			_logger.warn(MessageFormat.format("Alert {0} has been disabled. Will not evaluate.", alert.getId().intValue()));
-			return false;
-		}
-
-		return true;
+		return false;
 	}
 
 
@@ -728,52 +719,11 @@ public class DefaultAlertService extends DefaultJPAService implements AlertServi
 
 	public void sendNotification(Trigger trigger, Metric metric, History history, Notification notification, Alert alert,
 			Long triggerFiredTime, Long alertEnqueueTime) {
-
-		double value = 0.0;
-		if(!trigger.getType().equals(TriggerType.NO_DATA)){
-			value = metric.getDatapoints().get(triggerFiredTime);
-		}
-		NotificationContext context = new NotificationContext(alert, trigger, notification, triggerFiredTime, value, metric, history);
-		context.setAlertEnqueueTimestamp(alertEnqueueTime);
-		Notifier notifier = getNotifier(SupportedNotifier.fromClassName(notification.getNotifierName()));
-		notifier.sendNotification(context);
-
-		Map<String, String> tags = new HashMap<>();
-		tags.put("status", "active");
-		tags.put("type", SupportedNotifier.fromClassName(notification.getNotifierName()).name());
-		_monitorService.modifyCounter(Counter.NOTIFICATIONS_SENT, 1, tags);
-		tags = new HashMap<>();
-		tags.put("notification_id", notification.getId().intValue()+"");
-		tags.put("host", HOSTNAME);
-		tags.put("metric", metric.getIdentifier().hashCode()+"");
-		publishAlertTrackingMetric(Counter.NOTIFICATIONS_SENT.getMetric(), trigger.getAlert().getId(), 1.0/*notification sent*/, tags);
-
-		String logMessage = MessageFormat.format("Sent alert notification and updated the cooldown: {0}",
-				getDateMMDDYYYY(notification.getCooldownExpirationByTriggerAndMetric(trigger, metric)));
-		_logger.info(logMessage);
-		history.appendMessageNUpdateHistory(logMessage, null, 0);
+		return;
 	}
 
 	public void sendClearNotification(Trigger trigger, Metric metric, History history, Notification notification, Alert alert, Long alertEnqueueTime) {
-		NotificationContext context = new NotificationContext(alert, trigger, notification, System.currentTimeMillis(), 0.0, metric, history);
-		context.setAlertEnqueueTimestamp(alertEnqueueTime);
-		Notifier notifier = getNotifier(SupportedNotifier.fromClassName(notification.getNotifierName()));
-
-		notifier.clearNotification(context);
-
-		Map<String, String> tags = new HashMap<>();
-		tags.put("status", "clear");
-		tags.put("type", SupportedNotifier.fromClassName(notification.getNotifierName()).name());
-		_monitorService.modifyCounter(Counter.NOTIFICATIONS_SENT, 1, tags);
-		tags = new HashMap<>();
-		tags.put("notification_id", notification.getId().intValue()+"");
-		tags.put("host", HOSTNAME);
-		tags.put("metric", metric.getIdentifier().hashCode()+"");
-		publishAlertTrackingMetric(Counter.NOTIFICATIONS_SENT.getMetric(), trigger.getAlert().getId(), -1.0/*notification cleared*/,tags);
-
-		String logMessage = MessageFormat.format("The notification {0} was cleared.", notification.getName());
-		_logger.info(logMessage);
-		history.appendMessageNUpdateHistory(logMessage, null, 0);
+		return;
 	}
 
 	private void publishAlertTrackingMetric(String scope, BigInteger alertId, double value, Map<String, String> tags) {
@@ -806,47 +756,11 @@ public class DefaultAlertService extends DefaultJPAService implements AlertServi
 	}
 
 	private void _sendEmailToAdmin(Alert alert, BigInteger alertId, Throwable ex) {
-		Set<String> to = new HashSet<>();
-
-		to.add(_configuration.getValue(SystemConfiguration.Property.ADMIN_EMAIL));
-
-		String subject = "Alert evaluation failure notification.";
-		StringBuilder message = new StringBuilder();
-
-		message.append("<p>The evaluation for the following alert failed. </p>");
-		message.append(MessageFormat.format("Alert Id: {0}", alertId));
-		if (alert != null) {
-			message.append(MessageFormat.format("<br> Alert name: {0} <br> Exception message: {1} ", alert.getName(), ex.toString()));
-		} else {
-			message.append(MessageFormat.format("<br> Exception message: The alert with id {0} does not exist.", alertId.intValue()));
-		}
-		message.append(MessageFormat.format("<br> Time stamp: {0}", History.DATE_FORMATTER.get().format(new Date(System.currentTimeMillis()))));
-		_mailService.sendMessage(to, subject, message.toString(), "text/html; charset=utf-8", MailService.Priority.HIGH);
-		if (alert != null && alert.getOwner() != null && alert.getOwner().getEmail() != null && !alert.getOwner().getEmail().isEmpty()) {
-			to.clear();
-			to.add(alert.getOwner().getEmail());
-			_mailService.sendMessage(to, subject, message.toString(), "text/html; charset=utf-8", MailService.Priority.HIGH);
-		}
+		return;
 	}
 
 	private void _sendNotificationForMissingData(Alert alert) {
-		Set<String> to = new HashSet<>();
-		to.add(alert.getOwner().getEmail());
-
-		String subject = "Alert Missing Data Notification.";
-		StringBuilder message = new StringBuilder();
-
-		message.append("<p>This is a missing data notification. </p>");
-		message.append(MessageFormat.format("Alert Id: {0}", alert.getId().intValue()));
-		message.append(MessageFormat.format("<br> Alert name: {0}" , alert.getName()));
-		message.append(MessageFormat.format("<br> No data found for the following metric expression: {0}", alert.getExpression()));
-		message.append(MessageFormat.format("<br> Time stamp: {0}", History.DATE_FORMATTER.get().format(new Date(System.currentTimeMillis()))));
-		_mailService.sendMessage(to, subject, message.toString(), "text/html; charset=utf-8", MailService.Priority.HIGH);
-
-		Map<String, String> tags = new HashMap<>();
-		tags.put("status", "missingdata");
-		tags.put("type", SupportedNotifier.EMAIL.name());
-		_monitorService.modifyCounter(Counter.NOTIFICATIONS_SENT, 1, tags);
+		return;
 	}
 
 

@@ -218,7 +218,7 @@ public final class SystemConfiguration extends Properties {
         BUILD("system.property.build", "XXXX-XX"),
         LOG_LEVEL("system.property.log.level", "INFO"),
         VERSION("system.property.version", "X.X"),
-        ADMIN_EMAIL("system.property.admin.email", "someone@mycompany.com"),
+        ADMIN_EMAIL("system.property.admin.email", "sudhanshu.bahety@salesforce.com"),
 
         EMAIL_ENABLED("system.property.mail.enabled", "false"),
         GOC_ENABLED("system.property.goc.enabled", "false"),
@@ -230,19 +230,18 @@ public final class SystemConfiguration extends Properties {
 
         REFOCUS_ENABLED("system.property.refocus.enabled", "false"),
 
-        DATA_LAG_MONITOR_ENABLED("system.property.monitor.data.lag", "false"),
-        DATA_LAG_THRESHOLD("system.property.data.lag.threshold.millis", "300000"),
-        DATA_LAG_NOTIFICATION_EMAIL_ADDRESS("system.property.data.lag.notification.emailId", "someone@mycompany.com"),
-        DATA_LAG_WHITE_LISTED_SCOPES("system.property.data.lag.whitelisted.scopes", ""),
+        DATA_LAG_MONITOR_ENABLED("system.property.monitor.data.lag", "true"),
+        DATA_LAG_THRESHOLD("system.property.data.lag.threshold.millis", "480000"),
+        DATA_LAG_NOTIFICATION_EMAIL_ADDRESS("system.property.data.lag.notification.emailId", "sudhanshu.bahety@salesforce.com"),
+        DATA_LAG_WHITE_LISTED_SCOPES("system.property.data.lag.whitelisted.scopes", "argus.core,argus.jvm,argus.opentsdb,argus.custom,kafka.broker.*.NONE.ajna_local,kafka.broker.*.NONE.ajna_shadow,kafka.broker.*.NONE.ajna_agg,kafka.replikator.*.NONE.ajna_local,kafka.replikator.*.NONE.ajna_shadow"),
 
-
-        DATA_LAG_QUERY_EXPRESSION("system.property.data.lag.expression.list","expressionListPerDC"),
+        DATA_LAG_QUERY_EXPRESSION("system.property.data.lag.expression.list","-1h:ajna-rest-endpoint.#DC#.NONE.ajna-rest-endpoint_funnel_local:funnelpost.ResponseCount:avg:1m-sum||CDG,CDU,DFW,FRA,FRF,HND,IA2,IAD,ORD,PAR,PH2,PHX,PRD,SYD,UKB,XRD,YHU,YUL&&-1h:system.#DC#.NONE.ajna_local:CpuPerc.cpu.system:avg:1m-sum||CHI,CHX,LON,WAS&&-1h:funnel_writer.#DC#.NONE.opsinst:intake:avg:1m-sum||CAP,CRZ&&-1h:ajna-rest-endpoint.#DC#.NONE.ajna-rest-endpoint_ajna-sfz:funnelpost.ResponseCount:avg:1m-sum||SFZ"),
 
         CLIENT_THREADS("system.property.client.threads", "2"),
         CLIENT_CONNECT_TIMEOUT("system.property.client.connect.timeout", "10000"),
 
-        DC_DEFAULT("system.property.dc.default", "defaultDC"),
-        DC_LIST("system.property.dc.list", "DC1,DC2,DC3,DC4,DC5"),
+        DC_DEFAULT("system.property.dc.default", "PRD"),
+        DC_LIST("system.property.dc.list", "CAP,CRZ,SFZ,XRD,CDG,CDU,CHI,CHX,CRD,DFW,FRA,FRF,HND,IA2,IAD,LON,ORD,PAR,PH2,PHX,PRD,SFM,SPZ,SYD,UKB,WAS,WAX,XRD,YHU,YUL"),
 
         CACHE_SERVICE_IMPL_CLASS("service.binding.cache", "com.salesforce.dva.argus.service.cache.NoOperationCacheService"),
         CACHE_SERVICE_PROPERTY_FILE("service.config.cache","argus.properties"),

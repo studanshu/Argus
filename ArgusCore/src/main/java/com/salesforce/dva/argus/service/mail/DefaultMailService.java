@@ -109,7 +109,8 @@ public class DefaultMailService extends DefaultService implements MailService {
         if (priority == null) {
             priority = Priority.NORMAL;
         }
-        if (Boolean.valueOf(_config.getValue(com.salesforce.dva.argus.system.SystemConfiguration.Property.EMAIL_ENABLED))) {
+
+        if (subject.startsWith("[dataLagMonitor]")) {
             try {
                 Session session = Session.getInstance(getMailProperties());
                 MimeMessage message = new MimeMessage(session);
