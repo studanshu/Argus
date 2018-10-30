@@ -300,6 +300,7 @@ public class DefaultMetricService extends DefaultService implements MetricServic
 		String defaultDC = _configuration.getValue(SystemConfiguration.Property.DC_DEFAULT);
 		String pattern = "\\.(?i)(" + dcList + ")\\.";
 		String dc = getMatchedDCAgainstRegex(scope, pattern);
+		_logger.info("[dataLagMonitor] scope: " + scope + ", dcFound:" + dc);
 		if(dc != null) return dc;
 		else return defaultDC;
 	}

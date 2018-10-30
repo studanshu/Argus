@@ -78,7 +78,7 @@ class Alerter implements Runnable {
     public void run() {
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                //jobCounter.addAndGet(service.executeScheduledAlerts(50, timeout).size());
+                jobCounter.addAndGet(service.executeScheduledAlerts(50, timeout).size());
                 LOGGER.info("alerts evaluated so far: {}", jobCounter.get());
                 Thread.sleep(POLL_INTERVAL_MS);
             } catch (InterruptedException ex) {

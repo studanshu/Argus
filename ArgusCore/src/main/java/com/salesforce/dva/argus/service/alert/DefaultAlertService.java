@@ -504,7 +504,7 @@ public class DefaultAlertService extends DefaultJPAService implements AlertServi
 			String currentDC = _metricService.getDCFromScope(m.getScope());
 			if (_monitorService.isDataLagging(currentDC) && (_whiteListedScopeRegexPatterns.isEmpty() || !AlertUtils.isScopePresentInWhiteList(alert.getExpression(), _whiteListedScopeRegexPatterns)) ) {
 				history = new History(History.addDateToMessage(JobStatus.SKIPPED.getDescription()), HOSTNAME, alert.getId(), JobStatus.SKIPPED);
-				String logMessage = MessageFormat.format("Skipping evaluating the alert with id: {0}. because metric data was lagging", alert.getId().intValue());
+				String logMessage = MessageFormat.format("Skipping evaluating the alert with id: {0}. because metric data was lagging, with metric scope: {1}", alert.getId().intValue(), m.getScope());
 				_logger.info(logMessage);
 				history.appendMessageNUpdateHistory(logMessage, null, 0);
 

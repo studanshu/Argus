@@ -83,10 +83,10 @@ public class DataLagMonitor extends Thread{
 		boolean firstTime = true;
 
         while (!isInterrupted()) {
-            isThereAnyChangesInDataLag = false;
             try {
                 if (!firstTime) {
                     sleep(SLEEP_INTERVAL_MILLIS);
+                    isThereAnyChangesInDataLag = false;
                 } else {
                     // waiting 5 seconds for everything to initialize
                     sleep(5 * 1000);
@@ -112,7 +112,7 @@ public class DataLagMonitor extends Thread{
                     List<Metric> metrics = result.getValue();
                     boolean isDataLagging = _isDataLaggingbyDCMap.get(currentDC);
                     if (metrics == null || metrics.isEmpty()) {
-                        _logger.info("[dataLagMonitor] Data lag detected as metric list is empty");
+                        _logger.info("[dataLagMonitor] Data lag detected as metric list is empty: " + _expressionPerDC.get(idx));
                         if (!isDataLagging) {
                             updatesForDataLag(currentDC, true);
                         }
@@ -122,7 +122,7 @@ public class DataLagMonitor extends Thread{
                     //assuming only one time series in result
                     Metric currMetric = metrics.get(0);
                     if (currMetric.getDatapoints() == null || currMetric.getDatapoints().size() == 0) {
-                        _logger.info("[dataLagMonitor] Data lag detected as data point list is empty");
+                        _logger.info("[dataLagMonitor] Data lag detected as data point list is empty: " + _expressionPerDC.get(idx));
                         if (!isDataLagging) {
                             updatesForDataLag(currentDC, true);
                         }
@@ -135,7 +135,7 @@ public class DataLagMonitor extends Thread{
                             }
                         }
                         if ((currTime - lastDataPointTime) > _dataLagThreshold) {
-                            _logger.info("[dataLagMonitor] Data lag detected as the last data point recieved is more than the data threshold of " + _dataLagThreshold + " ms");
+                            _logger.info("[dataLagMonitor] Data lag detected as the last data point recieved is more than the data threshold of " + _dataLagThreshold + " ms: " + _expressionPerDC.get(idx));
                             if (!isDataLagging) {
                                 updatesForDataLag(currentDC, true);
                             }
@@ -144,6 +144,7 @@ public class DataLagMonitor extends Thread{
                     }
                     if (isDataLagging) {
                         updatesForDataLag(currentDC, false);
+                        _logger.info("[dataLagMonitor Data lag has been cleared for DC: " + _expressionPerDC.get(idx));
                         sendDataLagNotification(new ArrayList<>(listOfDCForNotificationDataLagNotPresent), false);
                     }
                 }
