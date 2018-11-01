@@ -39,24 +39,15 @@ import java.io.Serializable;
 import java.math.BigInteger;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TimeZone;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.persistence.EntityManager;
 
+import com.salesforce.dva.argus.util.QueryUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -1391,6 +1382,14 @@ public class DefaultAlertService extends DefaultJPAService implements AlertServi
 		this._monitorService.exportMetric(metric, value);
 	}
 
+	public void cleanUpOrphanAlerts(int numDays) {
+		List<Alert> alertsList = getAllAlertFromDB();
+		for(Iterator<Alert> iter = alertsList.iterator(); iter.hasNext();) {
+			Alert currentAlert = iter.next();
+			List<Metric> m = _metricService.getMetrics(currentAlert.getExpression(), System.ti);
+		}
+
+	}
 
 }
 /* Copyright (c) 2016, Salesforce.com, Inc.  All rights reserved. */

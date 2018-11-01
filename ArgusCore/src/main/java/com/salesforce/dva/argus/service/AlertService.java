@@ -345,6 +345,10 @@ public interface AlertService extends Service {
 	 * @param value  the value datapoint of the metric to be export
 	 */
 	void exportMetric(Metric metric, Double value);
+
+
+
+	void cleanUpOrphanAlerts(int pastDays);
 	
 	//~ Enums ****************************************************************************************************************************************
 

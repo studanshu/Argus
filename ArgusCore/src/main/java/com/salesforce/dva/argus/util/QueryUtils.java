@@ -52,4 +52,31 @@ public class QueryUtils {
 			throw new RuntimeException(e);
 		}
 	}
+
+	public static String replaceStartTimeEndTimeInExpressionWith(String expression, String startTime, String endTime) {
+		QueryContext context = getQueryContext(expression, System.currentTimeMillis());
+
+		Queue<QueryContext> bfsQueue = new LinkedList<QueryContext>();
+
+		String finalExpression = expression;
+
+		if (context != null) {
+			bfsQueue.add(context);
+		}
+
+		while (!bfsQueue.isEmpty()) {
+			QueryContext currContext = bfsQueue.poll();
+			if (currContext.getChildExpressions() != null) {
+				for (TSDBQueryExpression currentExpression : currContext.getChildExpressions()) {
+					finalExpression = finalExpression.replace(currentExpression.getStartTimestampInString(), startTime)
+							.replace(currentExpression.getEndTimestampInString(), endTime);
+					if (currContext.getChildContexts() != null) {
+						bfsQueue.addAll(currContext.getChildContexts());
+					}
+				}
+			}
+		}
+		return finalExpression;
+	}
+
 }

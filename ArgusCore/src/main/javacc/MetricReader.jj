@@ -765,6 +765,9 @@ private List<T> evaluateFunction(String functionName, List<T> result, List<Strin
  */
 private List<T> expression(long relativeTo, boolean syntaxOnly, Class<T> clazz, QueryContext currentQueryContext) :
 {
+
+    String startTimestampInString = null;
+    String endTimestampInString = null;
   	Long startTimestamp = null;
   	Long endTimestamp = null;
   	String namespace = null;
@@ -778,8 +781,8 @@ private List<T> expression(long relativeTo, boolean syntaxOnly, Class<T> clazz, 
   	TSDBQueryExpression expression = new TSDBQueryExpression();
 }
 { 	
-  	startTimestamp = getTime(relativeTo)<COLON>
-  	(endTimestamp = getTime(relativeTo)<COLON>)?
+  	startTimestampInString = getString() <COLON>
+  	(endTimestampInString = getString() <COLON>)?
   	scope = getString() <COLON> metric = getString()
   	(<LEFT_CURLY> tags = getTags() <RIGHT_CURLY>)?
   	<COLON>aggregator = getAggregator()
@@ -789,16 +792,19 @@ private List<T> expression(long relativeTo, boolean syntaxOnly, Class<T> clazz, 
 	    	downsampler = downsampleTokenStr != null ? getDownsampler(downsampleTokenStr) : null;
 	    downsamplingPeriod = downsampleTokenStr != null ? getDownsamplingPeriod(downsampleTokenStr): null;
 	    endTimestamp = endTimestamp == null ? relativeTo : endTimestamp;
-        
+
+        startTimestamp = getTime(relativeTo, startTimestampInString);
+        endTimestamp = getTime(relativeTo, endTimestampInString);
 	    expression.setNamespace(namespace);
         expression.setScope(scope);
         expression.setMetric(metric);
         expression.setAggregator(aggregator);
         expression.setTags(tags);
+        expression.setStartTimestampInString(startTimestampInString);
+        expression.setEndTimestampInString(endTimestampInString);
         expression.setStartTimestamp(startTimestamp);
         expression.setEndTimestamp(endTimestamp);
-        expression.setEndTimestamp(endTimestamp);
-        	expression.setDownsampler(downsampler);
+        expression.setDownsampler(downsampler);
         expression.setDownsamplingPeriod(downsamplingPeriod);
         currentQueryContext.getChildExpressions().add(expression);
 	  	if(MetricQuery.class.equals(clazz)) {
@@ -845,19 +851,6 @@ private List<T> expression(long relativeTo, boolean syntaxOnly, Class<T> clazz, 
 	}
 }
 
-private Long getTime(long relativeTo) :
-{
-  	Token t = null;
-  	Token t1 = null;
-}
-{
-	t = <TIME>
-	{
-	  	String timeStr = t.image;
-		return getTime(relativeTo, timeStr);
-	}
-}
-
 private String getString() :
 {
   	Token t = null;
@@ -877,6 +870,8 @@ private String getString() :
  	|
   	t = <DOWNSAMPLER>
   	{ return t.image; }
+  	t = <TIME>
+      { return t.image; }
 }
 
 private String getNamespace() :

@@ -24,10 +24,26 @@ public class TSDBQueryExpression {
     private Aggregator downsampler = null;
     
     private Long downsamplingPeriod = null;
+
+    private String startTimestampInString = null;
+
+	private String endTimestampInString = null;
     
 	public Long getStartTimestamp() {
  		return startTimestamp;
  	}
+
+	public String getStartTimestampInString() {
+		return startTimestampInString;
+	}
+
+	public String getEndTimestampInString() {
+		return endTimestampInString;
+	}
+
+	public void setStartTimestampInString(String endTimestampInString) { this.startTimestampInString = startTimestampInString; }
+
+	public void setEndTimestampInString(String endTimestampInString) { this.endTimestampInString = endTimestampInString; }
 
  	public void setStartTimestamp(Long startTimestamp) {
  		this.startTimestamp = startTimestamp;
