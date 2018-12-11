@@ -31,23 +31,7 @@
 
 package com.salesforce.dva.argus.service.alert.notifier;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import com.google.inject.Inject;
-import com.google.inject.Provider;
-import com.salesforce.dva.argus.entity.Alert;
-import com.salesforce.dva.argus.entity.Metric;
-import com.salesforce.dva.argus.entity.Notification;
-import com.salesforce.dva.argus.entity.Trigger;
-import com.salesforce.dva.argus.entity.Trigger.TriggerType;
-import com.salesforce.dva.argus.inject.SLF4JTypeListener;
-import com.salesforce.dva.argus.service.AnnotationService;
-import com.salesforce.dva.argus.service.AuditService;
-import com.salesforce.dva.argus.service.MetricService;
-import com.salesforce.dva.argus.service.AlertService.Notifier.NotificationStatus;
-import com.salesforce.dva.argus.service.alert.DefaultAlertService.NotificationContext;
-import com.salesforce.dva.argus.system.SystemConfiguration;
-import com.salesforce.dva.argus.system.SystemException;
+import static com.salesforce.dva.argus.system.SystemAssert.requireArgument;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
@@ -57,16 +41,29 @@ import java.util.Properties;
 
 import javax.persistence.EntityManager;
 
-import com.salesforce.dva.argus.util.AlertUtils;
-import com.salesforce.dva.argus.util.TemplateReplacer;
+import com.salesforce.dva.argus.entity.*;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.commons.httpclient.params.HttpConnectionManagerParams;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 
-import static com.salesforce.dva.argus.system.SystemAssert.requireArgument;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.inject.Inject;
+import com.google.inject.Provider;
+import com.salesforce.dva.argus.entity.Trigger.TriggerType;
+import com.salesforce.dva.argus.inject.SLF4JTypeListener;
+import com.salesforce.dva.argus.service.AnnotationService;
+import com.salesforce.dva.argus.service.AuditService;
+import com.salesforce.dva.argus.service.MetricService;
+import com.salesforce.dva.argus.service.alert.DefaultAlertService.NotificationContext;
+import com.salesforce.dva.argus.system.SystemConfiguration;
+import com.salesforce.dva.argus.system.SystemException;
+import com.salesforce.dva.argus.util.AlertUtils;
+import com.salesforce.dva.argus.util.TemplateReplacer;
 
 /**
  * Implementation of notifier interface for notifying GOC++.
@@ -120,8 +117,7 @@ public class GOCNotifier extends AuditNotifier {
 
 	/**
 	 * Sends an GOC++ message.
-	 *
-	 * @param  severity      The message severity
+	 *  @param  severity      The message severity
 	 * @param  className     The alert class name
 	 * @param  elementName   The element/instance name
 	 * @param  eventName     The event name
@@ -130,11 +126,16 @@ public class GOCNotifier extends AuditNotifier {
 	 * @param  srActionable  Is the GOC notification SR actionable
 	 * @param  lastNotified  The last message time. (typically current time)
 	 * @param triggeredOnMetric The corresponding metric
+	 * @param productTag
+	 * @param articleNumber
+     * @return true if succeed, false if fail
 	 */
-	public void sendMessage(Severity severity, String className, String elementName, String eventName, String message,
-							int severityLevel, boolean srActionable, long lastNotified, Metric triggeredOnMetric) {
-		requireArgument(elementName != null && !elementName.isEmpty(), "ElementName cannot be null or empty.");
+	private boolean sendMessage(History history, Severity severity, String className, String elementName, String eventName, String message,
+							int severityLevel, boolean srActionable, long lastNotified, Metric triggeredOnMetric, String productTag, String articleNumber) {
+    	requireArgument(elementName != null && !elementName.isEmpty(), "ElementName cannot be null or empty.");
 		requireArgument(eventName != null && !eventName.isEmpty(), "EventName cannot be null or empty.");
+		String failureMsg = null;
+
 		if (Boolean.valueOf(_config.getValue(com.salesforce.dva.argus.system.SystemConfiguration.Property.GOC_ENABLED))) {
 			try {
 				GOCDataBuilder builder = new GOCDataBuilder();
@@ -153,12 +154,17 @@ public class GOCNotifier extends AuditNotifier {
 				builder.withLastNotifiedAt(lastNotified);
 				if (srActionable == true) {
 					builder.withUserdefined2(_config.getValue(AuditNotifier.Property.AUDIT_PRODOUTAGE_EMAIL_TEMPLATE.getName(), AuditNotifier.Property.AUDIT_PRODOUTAGE_EMAIL_TEMPLATE.getDefaultValue()));
+					builder.withArticleNumber(articleNumber);
+				}
+				if (productTag != null) {
+					builder.withProductTag(productTag);
 				}
 
 				GOCData gocData = builder.build();
 				boolean refresh = false;
 				GOCTransport gocTransport = new GOCTransport();
 				HttpClient httpclient = gocTransport.getHttpClient(_config);
+
 
 				for (int i = 0; i < 1; i++) {
 
@@ -172,18 +178,31 @@ public class GOCNotifier extends AuditNotifier {
 
 						// Check for success
 						if (respCode == 201 || respCode == 204) {
-							_logger.info("Success - send GOC++ having element '{}' event '{}' severity {}.", elementName, eventName, severity.name());
-							break;
+							String infoMsg = MessageFormat.format ("Success - send GOC++ having element {0} event {1} severity {2}.",
+									elementName, eventName, severity.name());
+							_logger.info(infoMsg);
+							history.appendMessageNUpdateHistory(infoMsg, null, 0);
+							return true;
 						} else if (respCode == 401) {
 							// Indication that the session timedout, Need to refresh and retry
+							failureMsg = MessageFormat.format("Failure - send GOC++ Refocus having element {0} event {1} severity {2}. " +
+									"Response code {3} (session timeout).", elementName, eventName, severity.name(), respCode);
+							_logger.warn(failureMsg);
 							refresh = true;
+
 						} else {
-							_logger.error("Failure - send GOC++ having element '{}' event '{}' severity {}. Response code '{}' response '{}'",
-									elementName, eventName, severity.name(), respCode, post.getResponseBodyAsString());
+							failureMsg = MessageFormat.format("Failure - send GOC++ having element {0} event {1} severity {2}. " +
+											"Response code {3} response {4}", elementName, eventName, severity.name(), respCode,
+									        post.getResponseBodyAsString());
+							_logger.error(failureMsg);
+							break;
 						}
 					} catch (Exception e) {
+						failureMsg = MessageFormat.format("Failure - send GOC++ having element {0} event {1} severity {2}. Exception {3}",
+								elementName, eventName, severity.name(), e.getMessage());
 						_logger.error("Failure - send GOC++ having element '{}' event '{}' severity {}. Exception '{}'", elementName, eventName,
 								severity.name(), e);
+						break;
 					} finally {
 						if(post != null){
 							post.releaseConnection();
@@ -191,12 +210,21 @@ public class GOCNotifier extends AuditNotifier {
 					}
 				}
 			} catch (RuntimeException ex) {
+				failureMsg = MessageFormat.format("Failure - send GOC++. Exception {0}",ex.getMessage());
+				history.appendMessageNUpdateHistory(failureMsg, null, 0);
 				throw new SystemException("Failed to send an GOC++ notification.", ex);
 			}
 		} else {
-			_logger.info("Sending GOC++ notification is disabled.  Not sending message for element '{}' event '{}' severity {}.", elementName,
-					eventName, severity.name());
+			failureMsg = MessageFormat.format("Sending GOC++ notification is disabled.  Not sending message for element {0} event {1} severity {2}.",
+					elementName, eventName, severity.name());
+			_logger.warn(failureMsg);
 		}
+
+		if (StringUtils.isNotBlank(failureMsg)) {
+			history.appendMessageNUpdateHistory(failureMsg, null, 0);
+		}
+		return false;
+
 	}
 
 	private static String _truncateIfSizeGreaterThan(String str, int maxAllowed) {
@@ -214,13 +242,13 @@ public class GOCNotifier extends AuditNotifier {
 	}
 
 	@Override
-	protected void sendAdditionalNotification(NotificationContext context) {
-		_sendAdditionalNotification(context, NotificationStatus.TRIGGERED);
+	protected boolean sendAdditionalNotification(NotificationContext context) {
+		return _sendAdditionalNotification(context, NotificationStatus.TRIGGERED);
 	}
 
 	@Override
-	protected void clearAdditionalNotification(NotificationContext context) {
-		_sendAdditionalNotification(context, NotificationStatus.CLEARED);
+	protected boolean clearAdditionalNotification(NotificationContext context) {
+		return _sendAdditionalNotification(context, NotificationStatus.CLEARED);
 	}
 
 	/**
@@ -229,7 +257,7 @@ public class GOCNotifier extends AuditNotifier {
 	 * @param  context  The notification context.  Cannot be null.
 	 * @param  status   The notification status.  If null, will set the notification severity to <tt>ERROR</tt>
 	 */
-	protected void _sendAdditionalNotification(NotificationContext context, NotificationStatus status) {
+	protected boolean _sendAdditionalNotification(NotificationContext context, NotificationStatus status) {
 		requireArgument(context != null, "Notification context cannot be null.");
 		
 		if(status == NotificationStatus.TRIGGERED) {
@@ -259,8 +287,19 @@ public class GOCNotifier extends AuditNotifier {
 		String body = getGOCMessageBody(notification, trigger, context, status);
 		Severity sev = status == NotificationStatus.CLEARED ? Severity.OK : Severity.ERROR;
 
-		sendMessage(sev, TemplateReplacer.applyTemplateChanges(context, context.getNotification().getName()), TemplateReplacer.applyTemplateChanges(context, context.getAlert().getName()), TemplateReplacer.applyTemplateChanges(context, context.getTrigger().getName()), body,
-				context.getNotification().getSeverityLevel(),context.getNotification().getSRActionable(), context.getTriggerFiredTime(), context.getTriggeredMetric());
+		String elementName = notification.getElementName();
+		String eventName = notification.getEventName();
+
+		if (elementName == null) {
+			elementName = TemplateReplacer.applyTemplateChanges(context, context.getAlert().getName());
+		}
+
+		if (eventName == null) {
+			eventName = TemplateReplacer.applyTemplateChanges(context, trigger.getName());
+		}
+
+		return sendMessage(context.getHistory(), sev, TemplateReplacer.applyTemplateChanges(context, notification.getName()), elementName, eventName, body,
+				context.getNotification().getSeverityLevel(), context.getNotification().getSRActionable(), context.getTriggerFiredTime(), context.getTriggeredMetric(), notification.getProductTag(), notification.getArticleNumber());
 	}
 
 	/**
@@ -278,7 +317,7 @@ public class GOCNotifier extends AuditNotifier {
 		String expression = AlertUtils.getExpressionWithAbsoluteStartAndEndTimeStamps(context);
 		String notificationMessage = notificationStatus == NotificationStatus.TRIGGERED ? "Triggered" : "Cleared";
 		
-		sb.append(MessageFormat.format("Alert {0} was {1} at 21}\n", TemplateReplacer.applyTemplateChanges(context, context.getAlert().getName()), notificationMessage,
+		sb.append(MessageFormat.format("Alert {0} was {1} at {2}\n", TemplateReplacer.applyTemplateChanges(context, context.getAlert().getName()), notificationMessage,
 				DATE_FORMATTER.get().format(new Date(context.getTriggerFiredTime()))));
 		String customText = context.getNotification().getCustomText();
 		if( customText != null && customText.length()>0 && notificationStatus == NotificationStatus.TRIGGERED){
@@ -298,9 +337,14 @@ public class GOCNotifier extends AuditNotifier {
 			sb.append(MessageFormat.format("Evaluated metric expression:  {0}\n", context.getAlert().getExpression()));
 		}
 
-		if(!trigger.getType().equals(TriggerType.NO_DATA) && notificationStatus == NotificationStatus.TRIGGERED){
-		    sb.append(MessageFormat.format("Triggered on Metric:  {0}\n", context.getTriggeredMetric().getIdentifier()));
+		if(context.getTriggeredMetric()!=null) {
+			if(notificationStatus == NotificationStatus.TRIGGERED){
+				sb.append(MessageFormat.format("Triggered on Metric: {0}", context.getTriggeredMetric().getIdentifier()));
+			}else {
+				sb.append(MessageFormat.format("Cleared on Metric: {0}", context.getTriggeredMetric().getIdentifier()));
+			}
 		}
+		
 		sb.append(MessageFormat.format("Trigger details: {0}\n", getTriggerDetails(trigger, context)));
 		if(!trigger.getType().equals(TriggerType.NO_DATA) && notificationStatus == NotificationStatus.TRIGGERED){
 		    sb.append(MessageFormat.format("Triggering event value:  {0}\n", context.getTriggerEventValue()));
@@ -424,10 +468,12 @@ public class GOCNotifier extends AuditNotifier {
 		private static final String SM_SEVERITY__C_FIELD = "SM_Severity__c";
 		private static final String SM_SOURCEDOMAIN__C_FIELD = "SM_SourceDomain__c";
 		private static final String SR_ACTIONABLE__C_FIELD = "SR_Actionable__c";
-		private static final String SM_USERDEFINED2__C_FIELD = "SR_Userdefined2__c";
-		private static final String SM_USERDEFINED3__C_FIELD = "SR_Userdefined3__c";
-		private static final String SM_USERDEFINED10__C_FIELD = "SR_Userdefined10__c";
-		private static final String SM_USERDEFINED12__C_FIELD = "SR_Userdefined12__c";
+		private static final String SM_USERDEFINED2__C_FIELD = "SM_Userdefined2__c";
+		private static final String SM_USERDEFINED3__C_FIELD = "SM_Userdefined3__c";
+		private static final String SM_USERDEFINED10__C_FIELD = "SM_Userdefined10__c";
+		private static final String SM_USERDEFINED12__C_FIELD = "SM_Userdefined12__c";
+		private static final String SM_ARTICLE_NUMBER__C_FIELD = "SM_Article_Number__c";
+		private static final String SM_PRODUCTTAG__C_FIELD = "SM_Product_Tag__c";
 
 		//~ Instance fields ******************************************************************************************************************************
 
@@ -443,17 +489,22 @@ public class GOCNotifier extends AuditNotifier {
 		private final int smSeverityc; // Number(1, 0) (External ID) --> 0 through 5
 		private final String smSourceDomainc;
 		private final boolean srActionablec; // Checkbox --> true if SR needs to respond to this alert
+		// Userdefined fields
 		private final String smUserdefined2c;
 		private final String smUserdefined3c;
 		private final String smUserdefined10c;
 		private final String smUserdefined12c;
+		private final String smArticleNumber;
+		private final String smProductTag; // Product Tag associated with the alert object.
+
 
 
 		//~ Constructors *********************************************************************************************************************************
 
 		private GOCData(final boolean smActivec, final String smAlertIdc, final String smClassNamec, final long smClearedAtc, final long smCreatedAtc,
 						final String smElementNamec, final String smEventNamec, final String smEventTextc, final long smLastNotifiedAtc, final int smSeverityc,
-						final String smSourceDomainc, final boolean srActionablec, final String smUserdefined2c, final String smUserdefined3c, final String smUserdefined10c, final String smUserdefined12c) {
+						final String smSourceDomainc, final boolean srActionablec, final String smUserdefined2c, final String smUserdefined3c, final String smUserdefined10c, final String smUserdefined12c,
+						final String smArticleNumber, final String smProductTag) {
 			this.smActivec = smActivec;
 			this.smAlertIdc = smAlertIdc;
 			this.smClassNamec = smClassNamec;
@@ -470,6 +521,8 @@ public class GOCNotifier extends AuditNotifier {
 			this.smUserdefined3c = smUserdefined3c;
 			this.smUserdefined10c = smUserdefined10c;
 			this.smUserdefined12c = smUserdefined12c;
+			this.smArticleNumber = smArticleNumber;
+			this.smProductTag = smProductTag;
 
 		}
 
@@ -523,6 +576,12 @@ public class GOCNotifier extends AuditNotifier {
 			if(smUserdefined12c != null) {
 				gocData.addProperty(SM_USERDEFINED12__C_FIELD, smUserdefined12c);
 			}
+			if(smArticleNumber != null) {
+				gocData.addProperty(SM_ARTICLE_NUMBER__C_FIELD, smArticleNumber);
+			}
+			if(smProductTag != null) {
+				gocData.addProperty(SM_PRODUCTTAG__C_FIELD, smProductTag);
+			}
 			return gocData.toString();
 		}
 
@@ -554,6 +613,8 @@ public class GOCNotifier extends AuditNotifier {
 		private String smUserdefined3c = null;
 		private String smUserdefined10c = null;
 		private String smUserdefined12c = null;
+		private String smArticleNumber;
+		private String smProductTag;
 
 		/** Creates a new GOCDataBuilder object. */
 		public GOCDataBuilder() { }
@@ -681,7 +742,7 @@ public class GOCNotifier extends AuditNotifier {
 		/**
 		 * Specifies whether the userdefined2 field is defined.
 		 *
-		 * @param   smUserdefined2c  True if actionable.
+		 * @param   smUserdefined2c  user defined field.
 		 *
 		 * @return  The updated builder object.
 		 */
@@ -691,9 +752,9 @@ public class GOCNotifier extends AuditNotifier {
 		}
 
 		/**
-		 * Specifies whether the userdefined2 field is defined.
+		 * Specifies whether the userdefined3 field is defined.
 		 *
-		 * @param   smUserdefined3c  True if actionable.
+		 * @param   smUserdefined3c  user defined field.
 		 *
 		 * @return  The updated builder object.
 		 */
@@ -703,9 +764,9 @@ public class GOCNotifier extends AuditNotifier {
 		}
 
 		/**
-		 * Specifies whether the userdefined2 field is defined.
+		 * Specifies whether the userdefined10 field is defined.
 		 *
-		 * @param   smUserdefined10c  True if actionable.
+		 * @param   smUserdefined10c  user defined field.
 		 *
 		 * @return  The updated builder object.
 		 */
@@ -715,14 +776,39 @@ public class GOCNotifier extends AuditNotifier {
 		}
 
 		/**
-		 * Specifies whether the userdefined2 field is defined.
+		 * Specifies whether the userdefined12 field is defined.
 		 *
-		 * @param   smUserdefined12c  True if actionable.
+		 * @param   smUserdefined12c  user defined field.
 		 *
 		 * @return  The updated builder object.
 		 */
 		public GOCDataBuilder withUserdefined12(final String smUserdefined12c) {
 			this.smUserdefined12c = smUserdefined12c;
+			return this;
+		}
+
+		/**
+		 * Specifies whether the userdefined2 field is defined.
+		 *
+		 * @param   smArticleNumber  user defined field.
+		 *
+		 * @return  The updated builder object.
+		 */
+		public GOCDataBuilder withArticleNumber(String smArticleNumber) {
+			this.smArticleNumber = smArticleNumber;
+			return this;
+		}
+
+
+		/**
+		 * Specifies whether the userdefined2 field is defined.
+		 *
+		 * @param   smProductTag  user defined field.
+		 *
+		 * @return  The updated builder object.
+		 */
+		public GOCDataBuilder withProductTag(String smProductTag) {
+			this.smProductTag = smProductTag;
 			return this;
 		}
 
@@ -733,7 +819,7 @@ public class GOCNotifier extends AuditNotifier {
 		 */
 		public GOCData build() {
 			return new GOCData(smActivec, smElementNamec + ALERT_ID_SEPARATOR + smEventNamec, smClassNamec, smClearedAtc, smCreatedAtc,
-					smElementNamec, smEventNamec, smEventTextc, smLastNotifiedAtc, smSeverityc, SM_SOURCE_DOMAIN__C, srActionablec, smUserdefined2c, smUserdefined3c, smUserdefined10c, smUserdefined12c);
+					smElementNamec, smEventNamec, smEventTextc, smLastNotifiedAtc, smSeverityc, SM_SOURCE_DOMAIN__C, srActionablec, smUserdefined2c, smUserdefined3c, smUserdefined10c, smUserdefined12c, smArticleNumber, smProductTag);
 		}
 	}
 

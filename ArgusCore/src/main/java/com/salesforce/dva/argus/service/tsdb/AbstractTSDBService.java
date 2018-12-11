@@ -40,24 +40,15 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntUnaryOperator;
@@ -202,7 +193,7 @@ public class AbstractTSDBService extends DefaultService implements TSDBService {
 		requireArgument(connTimeout >= 1, "Timeout must be greater than 0.");
 
 		_keyUidCache = CacheBuilder.newBuilder()
-				.maximumSize(100000)
+				.maximumSize(1000000)
 				.expireAfterAccess(1, TimeUnit.HOURS)
 				.build();
 
@@ -401,11 +392,13 @@ public class AbstractTSDBService extends DefaultService implements TSDBService {
 			put(fracturedList, endpoint + "/api/put", HttpMethod.POST, CHUNK_SIZE);
 		} catch(Exception ex) {
 			_logger.warn("Failure while trying to push metrics", ex);
-			_retry(fracturedList, _roundRobinIterator, "/api/put", HttpMethod.POST, CHUNK_SIZE);
+			retry(fracturedList, _roundRobinIterator, "/api/put", HttpMethod.POST, CHUNK_SIZE);
 		}
 	}
 
-	public <T> void _retry(List<T> objects, Iterator<String> endPointIterator, String urlPath, HttpMethod httpMethod, int chunkSize) {
+	<T> void retry(List<T> objects, Iterator<String> endPointIterator, String urlPath, HttpMethod httpMethod, int chunkSize) {
+		Exception failure = null;
+
 		for(int i=0;i<RETRY_COUNT;i++) {
 			try {
 				String endpoint = endPointIterator.next();
@@ -413,12 +406,15 @@ public class AbstractTSDBService extends DefaultService implements TSDBService {
 				put(objects, endpoint + urlPath, httpMethod, chunkSize);
 				return;
 			} catch(Exception ex) {
-				_logger.info("Failed while trying to push data. We will retry for {} more times", RETRY_COUNT-i);
+				failure = ex;
+				_logger.info("Failed while trying to push data. We will retry for {} more times", RETRY_COUNT-i-1);
 			}
 		}
 
 		_logger.error("Retried for {} times and we still failed. Dropping this chunk of data.", RETRY_COUNT);
-
+		if (failure != null) {
+			throw new SystemException(failure.getMessage(), failure);
+		}
 	}
 
 	/** @see  TSDBService#putAnnotations(java.util.List) */
@@ -451,17 +447,19 @@ public class AbstractTSDBService extends DefaultService implements TSDBService {
 				}
 			}
 
-			// query TSDB to get uids for annotations.
-			Map<String, String> keyUidMap = getUidMapFromTsdb(keyAnnotationMap);
+			if(!keyAnnotationMap.isEmpty()) {
+				// query TSDB to get uids for annotations.
+				Map<String, String> keyUidMap = getUidMapFromTsdb(keyAnnotationMap);
 
-			for(Map.Entry<String, String> keyUidEntry : keyUidMap.entrySet()) {
+				for (Map.Entry<String, String> keyUidEntry : keyUidMap.entrySet()) {
 
-				// We add new uids to the cache and create AnnotationWrapper objects.
-				_keyUidCache.put(keyUidEntry.getKey(), keyUidEntry.getValue());
-				AnnotationWrapper wrapper = new AnnotationWrapper(keyUidEntry.getValue(),
-						keyAnnotationMap.get(keyUidEntry.getKey()));
+					// We add new uids to the cache and create AnnotationWrapper objects.
+					_keyUidCache.put(keyUidEntry.getKey(), keyUidEntry.getValue());
+					AnnotationWrapper wrapper = new AnnotationWrapper(keyUidEntry.getValue(),
+							keyAnnotationMap.get(keyUidEntry.getKey()));
 
-				addToWrapperList(wrapperList, wrapper);
+					addToWrapperList(wrapperList, wrapper);
+				}
 			}
 
 			_logger.debug("putAnnotations CacheStats hitCount {} requestCount {} " +
@@ -479,7 +477,7 @@ public class AbstractTSDBService extends DefaultService implements TSDBService {
 					put(wrappers, endpoint + "/api/annotation/bulk", HttpMethod.POST, CHUNK_SIZE);
 				} catch (Exception ex) {
 					_logger.warn("Exception while trying to push annotations", ex);
-					_retry(wrappers, _roundRobinIterator, "/api/annotation/bulk", HttpMethod.POST, CHUNK_SIZE);
+					retry(wrappers, _roundRobinIterator, "/api/annotation/bulk", HttpMethod.POST, CHUNK_SIZE);
 				}
 			}
 		}
@@ -528,11 +526,12 @@ public class AbstractTSDBService extends DefaultService implements TSDBService {
 			queries.add(query);
 		}
 
-		long backOff = 1000L;
+		putMetrics(metrics);
+
+		long backOff = 500L;
 
 		for (int attempts = 0; attempts < 3; attempts++) {
 
-			putMetrics(metrics);
 			try {
 				Thread.sleep(backOff);
 			} catch (InterruptedException ex) {
@@ -551,7 +550,8 @@ public class AbstractTSDBService extends DefaultService implements TSDBService {
 				return keyUidMap;
 
 			} catch (Exception e) {
-				backOff += 1000L;
+				_logger.warn("Exception while trying to get uids for annotations", e);
+				backOff += 500L;
 			}
 		}
 

@@ -37,6 +37,7 @@ import com.salesforce.dva.argus.service.metric.MetricReader;
 import com.salesforce.dva.argus.system.SystemAssert;
 import com.salesforce.dva.argus.system.SystemException;
 import com.salesforce.dva.argus.util.QueryContext;
+import com.salesforce.dva.argus.util.QueryUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,7 +65,7 @@ public class FillTransform implements Transform {
 
     //~ Methods **************************************************************************************************************************************
 
-    private static Map<Long, Double> _fillMetricTransform(Metric metric, long windowSizeInSeconds, long offsetInSeconds, double value) {
+    private static Map<Long, Double> _fillMetricTransform(QueryContext queryContext, Metric metric, long windowSizeInSeconds, long offsetInSeconds, double value) {
     	if(metric == null || metric.getDatapoints() == null || metric.getDatapoints().isEmpty()) {
     		return Collections.emptyMap();
     	}
@@ -75,17 +76,32 @@ public class FillTransform implements Transform {
 
         sortedDatapoints.keySet().toArray(sortedTimestamps);
 
-        Long startTimestamp = sortedTimestamps[0];
-        Long endTimestamp = sortedTimestamps[sortedTimestamps.length - 1];
+        Long[] startAndEndTimestamps = QueryUtils.getStartAndEndTimesWithMaxInterval(queryContext);
+        
+        //if interval size is more than a minute, rounding the start and end times to nearest minute
+        if(windowSizeInSeconds >= 60) {
+         	startAndEndTimestamps[0] = (startAndEndTimestamps[0]/(60*1000))*(60*1000);
+         	startAndEndTimestamps[1] = (startAndEndTimestamps[1]/(60*1000))*(60*1000);
+        }
+        
+        Long startTimestamp = startAndEndTimestamps[0]>0 ? startAndEndTimestamps[0] : sortedTimestamps[0];
+        Long endTimestamp = startAndEndTimestamps[1]>0 ? startAndEndTimestamps[1] : sortedTimestamps[sortedTimestamps.length - 1];
+
 
         // create a new datapoints map propagateDatpoints, which have all the
         // expected timestamps, then fill the missing value
         int index = 1;
         int numDatapoints = 0;
-        while (startTimestamp <= endTimestamp && numDatapoints++ < MAX_DATAPOINTS_FOR_FILL) {
+        
+        if(startTimestamp < endTimestamp && ((endTimestamp - startTimestamp)/(windowSizeInSeconds * 1000) >= MAX_DATAPOINTS_FOR_FILL)) {
+        	    throw new RuntimeException("Fill transform cannot generate more than -" + MAX_DATAPOINTS_FOR_FILL + " datapoints");
+        }
+
+        while (startTimestamp <= endTimestamp) {
             filledDatapoints.put(startTimestamp, sortedDatapoints.containsKey(startTimestamp) ? sortedDatapoints.get(startTimestamp) : null);
             if (index >= sortedDatapoints.size()) {
-                break;
+              	startTimestamp = startTimestamp + windowSizeInSeconds * 1000;
+                continue;
             }
             if ((startTimestamp + windowSizeInSeconds * 1000) < sortedTimestamps[index]) {
                 startTimestamp = startTimestamp + windowSizeInSeconds * 1000;
@@ -244,7 +260,7 @@ public class FillTransform implements Transform {
         for (Metric metric : metrics) {
             Metric newMetric = new Metric(metric);
 
-            newMetric.setDatapoints(_fillMetricTransform(metric, windowSizeInSeconds, offsetInSeconds, value));
+            newMetric.setDatapoints(_fillMetricTransform(queryContext, metric, windowSizeInSeconds, offsetInSeconds, value));
             fillMetricList.add(newMetric);
         }
         return fillMetricList;
