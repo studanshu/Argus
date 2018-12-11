@@ -543,9 +543,9 @@ public class DefaultAlertService extends DefaultJPAService implements AlertServi
 	}
 
 	private boolean shouldMetricBeRemovedForDataLag(Alert alert, Metric m, History history) {
-		if(Boolean.valueOf(_configuration.getValue(SystemConfiguration.Property.DATA_LAG_MONITOR_ENABLED))) {
+		if (Boolean.valueOf(_configuration.getValue(SystemConfiguration.Property.DATA_LAG_MONITOR_ENABLED))) {
 			String currentDC = _metricService.getDCFromScope(m.getScope());
-			if (_monitorService.isDataLagging(currentDC) && (_whiteListedScopeRegexPatterns.isEmpty() || !AlertUtils.isScopePresentInWhiteList(alert.getExpression(), _whiteListedScopeRegexPatterns)) ) {
+			if (_monitorService.isDataLagging(currentDC) && (_whiteListedScopeRegexPatterns.isEmpty() || !AlertUtils.isScopePresentInWhiteList(alert.getExpression(), _whiteListedScopeRegexPatterns))) {
 				history = new History(History.addDateToMessage(JobStatus.SKIPPED.getDescription()), HOSTNAME, alert.getId(), JobStatus.SKIPPED);
 				String logMessage = MessageFormat.format("Skipping evaluating the alert with id: {0}. because metric data was lagging", alert.getId().intValue());
 				_logger.info(logMessage);
@@ -558,6 +558,7 @@ public class DefaultAlertService extends DefaultJPAService implements AlertServi
 			}
 		}
 		return false;
+	}
 
 	private void updateAlertStartEvaluationStats(Map<BigInteger, Long> alertEnqueueTimestampsByAlertId, Alert alert, long jobStartTime) {
 		Long alertEnqueueTimestamp = 0L;

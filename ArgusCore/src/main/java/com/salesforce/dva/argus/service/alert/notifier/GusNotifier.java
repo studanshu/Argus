@@ -161,7 +161,7 @@ public class GusNotifier extends AuditNotifier {
 		Set<String> to = new HashSet<String>(notification.getSubscriptions());
 		String feed = generateGusFeed(notification, trigger, context, status);
 
-		return postToGus(context.getHistory(),to, feed);
+		return postToGus(context.getHistory(),to, feed, _config);
     }
 
 	private String generateGusFeed(Notification notification, Trigger trigger, NotificationContext context, NotificationStatus status) {
@@ -211,7 +211,7 @@ public class GusNotifier extends AuditNotifier {
 		return sb.toString();
 	}
 
-	public static void postToGus(History history, Set<String> to, String feed, SystemConfiguration _config) {
+	public static boolean postToGus(History history, Set<String> to, String feed, SystemConfiguration _config) {
 
 		String failureMsg = null;
 		if (Boolean.valueOf(_config.getValue(com.salesforce.dva.argus.system.SystemConfiguration.Property.GUS_ENABLED))) {
