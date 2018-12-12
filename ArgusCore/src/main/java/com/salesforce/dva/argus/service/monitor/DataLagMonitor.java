@@ -178,7 +178,7 @@ public class DataLagMonitor extends Thread{
 		if (isDataLaggingInDC) {
             if(currentScenario == isThereAnyChangesInDataLag.NONE) {
                 currentScenario = isThereAnyChangesInDataLag.CHANGES_IN_DATA_LAG_DC;
-            } else {
+            } else if(currentScenario == isThereAnyChangesInDataLag.CHANGES_IN_DATA_RESUMED_DC) {
                 currentScenario = isThereAnyChangesInDataLag.CHANGES_IN_BOTH;
             }
             listOfDCForNotificationDataLagPresent.add(currentDC);
@@ -188,7 +188,7 @@ public class DataLagMonitor extends Thread{
         } else {
             if(currentScenario == isThereAnyChangesInDataLag.NONE) {
                 currentScenario = isThereAnyChangesInDataLag.CHANGES_IN_DATA_RESUMED_DC;
-            } else {
+			} else if(currentScenario == isThereAnyChangesInDataLag.CHANGES_IN_DATA_LAG_DC) {
                 currentScenario = isThereAnyChangesInDataLag.CHANGES_IN_BOTH;
             }
             listOfDCForNotificationDataLagNotPresent.add(currentDC);
