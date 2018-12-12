@@ -4,6 +4,10 @@ import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.*;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.salesforce.dva.argus.service.MonitorService;
 import javafx.util.Pair;
 import org.apache.commons.lang.exception.ExceptionUtils;
@@ -21,7 +25,7 @@ import com.salesforce.dva.argus.system.SystemConfiguration;
  */
 public class DataLagMonitor extends Thread{
 
-	private String _dataLagQueryExpressions;
+	private JsonObject _dataLagQueryExpressions;
 
 	private long _dataLagThreshold;
 
@@ -54,7 +58,7 @@ public class DataLagMonitor extends Thread{
 	    _sysConfig = sysConfig;
 		_metricService = metricService;
 		_mailService = mailService;
-		_dataLagQueryExpressions = sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_QUERY_EXPRESSION);
+		_dataLagQueryExpressions = new JsonParser().parse(sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_QUERY_EXPRESSION)).getAsJsonObject();
         _dataLagThreshold = Long.valueOf(sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_THRESHOLD));
 		_dataLagNotificationEmailId = sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_NOTIFICATION_EMAIL_ADDRESS);
 		_hostName = sysConfig.getHostname();
@@ -63,15 +67,17 @@ public class DataLagMonitor extends Thread{
         _logger.info("Data lag monitor initialized");
 	}
 
-	private void init(String dataLagQueryExpressions) {
-	    for(String expressionDCPair: dataLagQueryExpressions.split("&&")) {
-	        String [] currentExpressionDC = expressionDCPair.split("\\|\\|");
-	        String currentExpression = currentExpressionDC[0];
-            for (String currentDC : currentExpressionDC[1].split(",")) {
-                _expressionPerDC.put(currentDC, currentExpression.replace("#DC#", currentDC));
-                _isDataLaggingbyDCMap.put(currentDC, false);
-            }
-        }
+	private void init(JsonObject dataLagQueryExpressions) {
+		Set<Map.Entry<String, JsonElement>> entries = dataLagQueryExpressions.entrySet();
+		for (Map.Entry<String, JsonElement> entry: entries) {
+			String currentExpression = entry.getKey();
+			JsonArray dcList = entry.getValue().getAsJsonArray();
+			for(JsonElement value: dcList) {
+				String currentDC = value.getAsString();
+				_expressionPerDC.put(currentDC, currentExpression.replace("#DC#", currentDC));
+				_isDataLaggingbyDCMap.put(currentDC, false);
+			}
+		}
 
         for (String DC: _sysConfig.getValue(SystemConfiguration.Property.DC_LIST).split(",") ) {
             listOfDCForNotificationDataLagNotPresent.add(DC);
@@ -167,7 +173,9 @@ public class DataLagMonitor extends Thread{
 	private void updateStatesForDataLag(String currentDC, boolean isDataLaggingInDC) {
         this._isDataLaggingbyDCMap.put(currentDC, isDataLaggingInDC);
         Map<String, String> tags = new HashMap<>();
-        if (isDataLaggingInDC) {
+        int delta;
+
+		if (isDataLaggingInDC) {
             if(currentScenario == isThereAnyChangesInDataLag.NONE) {
                 currentScenario = isThereAnyChangesInDataLag.CHANGES_IN_DATA_LAG_DC;
             } else {
@@ -175,8 +183,7 @@ public class DataLagMonitor extends Thread{
             }
             listOfDCForNotificationDataLagPresent.add(currentDC);
             listOfDCForNotificationDataLagNotPresent.remove(currentDC);
-            tags.put("DC", currentDC);
-            _monitorService.modifyCounter(MonitorService.Counter.DATALAG_PER_DC_COUNT, 1, tags);
+            delta = 1;
             _logger.info(MessageFormat.format("Incrementing count for DC: {0} due to data lag.", currentDC));
         } else {
             if(currentScenario == isThereAnyChangesInDataLag.NONE) {
@@ -185,11 +192,13 @@ public class DataLagMonitor extends Thread{
                 currentScenario = isThereAnyChangesInDataLag.CHANGES_IN_BOTH;
             }
             listOfDCForNotificationDataLagNotPresent.add(currentDC);
-            listOfDCForNotificationDataLagPresent.remove(currentDC);
-            tags.put("DC", currentDC);
-            _monitorService.modifyCounter(MonitorService.Counter.DATALAG_PER_DC_COUNT, -1, tags);
-            _logger.info(MessageFormat.format("Decrementing count for DC: {0} due to data lag resolution.", currentDC));
+			listOfDCForNotificationDataLagPresent.remove(currentDC);
+			delta = -1;
+			_logger.info(MessageFormat.format("Decrementing count for DC: {0} due to data lag resolution.", currentDC));
         }
+		tags.put("dc", currentDC);
+		_monitorService.modifyCounter(MonitorService.Counter.DATALAG_PER_DC_COUNT, delta, tags);
+
     }
 
 	private void sendDataLagNotification(boolean isDataLagDCList) {
