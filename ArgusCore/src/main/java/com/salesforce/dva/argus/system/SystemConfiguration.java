@@ -234,9 +234,8 @@ public final class SystemConfiguration extends Properties {
         DATA_LAG_THRESHOLD("system.property.data.lag.threshold.millis", "300000"),
         DATA_LAG_NOTIFICATION_EMAIL_ADDRESS("system.property.data.lag.notification.emailId", "someone@mycompany.com"),
         DATA_LAG_WHITE_LISTED_SCOPES("system.property.data.lag.whitelisted.scopes", ""),
-
-
         DATA_LAG_QUERY_EXPRESSION("system.property.data.lag.expression.list","expressionListPerDC"),
+        DATA_LAG_DEFAULT_EXPRESSION("system.property.data.lag.default.expression","defaultExpression"),
 
         CLIENT_THREADS("system.property.client.threads", "2"),
         CLIENT_CONNECT_TIMEOUT("system.property.client.connect.timeout", "10000"),

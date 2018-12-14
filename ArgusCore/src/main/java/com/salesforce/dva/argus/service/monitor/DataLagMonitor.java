@@ -19,6 +19,7 @@ import com.salesforce.dva.argus.entity.Metric;
 import com.salesforce.dva.argus.service.MailService;
 import com.salesforce.dva.argus.service.MetricService;
 import com.salesforce.dva.argus.system.SystemConfiguration;
+import sun.plugin2.message.Message;
 
 /*
  * This class runs a thread which periodically checks if there is data lag on Argus side.
@@ -34,9 +35,13 @@ public class DataLagMonitor extends Thread{
 
 	private String _hostName;
 
+	private String _defaultExpression;
+
 	private Map<String, Boolean> _isDataLaggingbyDCMap = new TreeMap<>();
 
 	private Map<String, String> _expressionPerDC = new TreeMap<>();
+
+	private Set<String> dcList = new HashSet<>();
 
 	private MetricService _metricService;
 
@@ -54,48 +59,58 @@ public class DataLagMonitor extends Thread{
 
 	private SystemConfiguration _sysConfig;
 
+	private final ExecutorCompletionService<Pair<String, List<Metric>>> _completionService;
+	private final ExecutorService _executorService = Executors.newSingleThreadExecutor();;
     private Set<String> listOfDCForNotificationDataLagPresent = new HashSet<>();
     private Set<String> listOfDCForNotificationDataLagNotPresent = new HashSet<>();
     private enum isThereAnyChangesInDataLag  {NONE, CHANGES_IN_DATA_LAG_DC, CHANGES_IN_DATA_RESUMED_DC, CHANGES_IN_BOTH};
     private isThereAnyChangesInDataLag currentScenario = isThereAnyChangesInDataLag.NONE;
 
     public DataLagMonitor(SystemConfiguration sysConfig, MetricService metricService, MailService mailService, MonitorService monitorService, TSDBService tsdbService) {
-	    super("datalag-monitor-thread");
+	    super("datalag-monitor");
     	_sysConfig = sysConfig;
 		_metricService = metricService;
 		_mailService = mailService;
-		_dataLagQueryExpressions = new JsonParser().parse(sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_QUERY_EXPRESSION)).getAsJsonObject();
-        _dataLagThreshold = Long.valueOf(sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_THRESHOLD));
-		_dataLagNotificationEmailId = sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_NOTIFICATION_EMAIL_ADDRESS);
-		_hostName = sysConfig.getHostname();
 		_monitorService = monitorService;
 		_tsdbService = tsdbService;
+		_hostName = SystemConfiguration.getHostname();
+		_dataLagThreshold = Long.valueOf(sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_THRESHOLD));
+		_dataLagNotificationEmailId = sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_NOTIFICATION_EMAIL_ADDRESS);
+		_defaultExpression = sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_DEFAULT_EXPRESSION);
+		_dataLagQueryExpressions = new JsonParser().parse(sysConfig.getValue(SystemConfiguration.Property.DATA_LAG_QUERY_EXPRESSION)).getAsJsonObject();
 		init(_dataLagQueryExpressions);
-        _logger.info("Data lag monitor initialized");
+		_completionService = new ExecutorCompletionService<>(Executors.newFixedThreadPool(5));
+		_logger.info("Data lag monitor initialized");
 	}
 
 	private void init(JsonObject dataLagQueryExpressions) {
-		Set<Map.Entry<String, JsonElement>> entries = dataLagQueryExpressions.entrySet();
-		for (Map.Entry<String, JsonElement> entry: entries) {
-			String currentExpression = entry.getKey();
-			JsonArray dcList = entry.getValue().getAsJsonArray();
-			for(JsonElement value: dcList) {
-				String currentDC = value.getAsString();
-				_expressionPerDC.put(currentDC, currentExpression.replace("#DC#", currentDC));
-				_isDataLaggingbyDCMap.put(currentDC, false);
+    	try {
+			Set<Map.Entry<String, JsonElement>> entries = dataLagQueryExpressions.entrySet();
+			for (Map.Entry<String, JsonElement> entry : entries) {
+				String currentExpression = entry.getKey();
+				JsonArray dcList = entry.getValue().getAsJsonArray();
+				for (JsonElement value : dcList) {
+					String currentDC = value.getAsString();
+					_expressionPerDC.put(currentDC, currentExpression.replace("#DC#", currentDC));
+					_isDataLaggingbyDCMap.put(currentDC, false);
+				}
 			}
+		} catch (Exception ex) {
+			_logger.error("Exception occured while parsing the datalag expression json list, using default expression. Exception: {}", ex);
 		}
 
-        for (String DC: _sysConfig.getValue(SystemConfiguration.Property.DC_LIST).split(",") ) {
-            listOfDCForNotificationDataLagNotPresent.add(DC);
-        }
+		for (String DC : _sysConfig.getValue(SystemConfiguration.Property.DC_LIST).split(",")) {
+			listOfDCForNotificationDataLagNotPresent.add(DC);
+			dcList.add(DC);
+			if (!_expressionPerDC.containsKey(DC)) {
+				_expressionPerDC.put(DC, _defaultExpression);
+			}
+		}
     }
 
 	@Override
 	public void run() {
 		_logger.info("Data lag monitor thread started");
-        final ExecutorService pool = Executors.newFixedThreadPool(5);
-        final ExecutorCompletionService<Pair<String, List<Metric>>> completionService = new ExecutorCompletionService<>(pool);
         long currTime = System.currentTimeMillis();
 		boolean firstTime = true;
 
@@ -111,7 +126,7 @@ public class DataLagMonitor extends Thread{
                 }
 
                 for (String currentDC : _expressionPerDC.keySet()) {
-                    completionService.submit(() -> {
+                    _completionService.submit(() -> {
                         List<Metric> metrics = new ArrayList<>();
                         try {
                             metrics = _metricService.getMetrics(_expressionPerDC.get(currentDC), currTime);
@@ -124,7 +139,7 @@ public class DataLagMonitor extends Thread{
                 }
 
                 for (int idx = 0; idx < _expressionPerDC.size(); ++idx) {
-                    Future<Pair<String, List<Metric>>> future = completionService.take();
+                    Future<Pair<String, List<Metric>>> future = _completionService.take();
                     Pair<String, List<Metric>> result = future.get();
                     String currentDC = result.getKey();
                     List<Metric> metrics = result.getValue();
@@ -197,7 +212,10 @@ public class DataLagMonitor extends Thread{
 		Metric trackingMetric = new Metric(MonitorService.Counter.DATALAG_PER_DC_TIME_LAG.getScope(), MonitorService.Counter.DATALAG_PER_DC_TIME_LAG.getMetric());
 		trackingMetric.setTags(tags);
 		try {
-			_tsdbService.putMetrics(Arrays.asList(new Metric[] {trackingMetric}));
+			_executorService.submit(()->{
+				_tsdbService.putMetrics(Collections.singletonList(trackingMetric));
+				_logger.info(MessageFormat.format("Pushing datalag metric - hostname:{0}, dc:{1}, lagTime:{2}",_hostName, currentDC, lagTime));
+				});
 		} catch (Exception ex) {
 			_logger.error("Exception occurred while adding datalag metric to tsdb - {}", ex.getMessage());
 		}
