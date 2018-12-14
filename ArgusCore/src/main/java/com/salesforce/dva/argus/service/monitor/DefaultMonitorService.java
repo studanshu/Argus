@@ -221,7 +221,7 @@ public class DefaultMonitorService extends DefaultJPAService implements MonitorS
 
 			if (Boolean.valueOf(_sysConfig.getValue(com.salesforce.dva.argus.system.SystemConfiguration.Property.DATA_LAG_MONITOR_ENABLED))) {
 				_logger.info("Starting data lag monitor thread.");
-				_dataLagMonitorThread = new DataLagMonitor(_sysConfig, _metricService, _mailService, this);
+				_dataLagMonitorThread = new DataLagMonitor(_sysConfig, _metricService, _mailService, this, _tsdbService);
 				_dataLagMonitorThread.start();
 				_logger.info("Data lag monitor thread started.");
 			}
